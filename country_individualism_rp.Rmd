@@ -1,0 +1,257 @@
+---
+title: "Countries response to COVID19 is linked to individualism"
+author: "Rui Pei"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    df_print: paged
+    highlight: tango
+    theme: united
+    toc: yes
+    toc_float:
+      collapsed: yes
+      smooth_scroll: yes
+---
+
+```{r setup, warning=FALSE}
+rm(list = ls())
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(plyr))
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(knitr))
+suppressPackageStartupMessages(library(Rfast))
+suppressPackageStartupMessages(library(ggpubr))
+suppressPackageStartupMessages(library(jtools))
+suppressPackageStartupMessages(library(httr))
+suppressPackageStartupMessages(library(gganimate))
+suppressPackageStartupMessages(library(transformr))
+suppressPackageStartupMessages(library(broom.mixed))
+
+```
+
+# Import data
+
+Country population data from : [https://datahub.io/JohnSnowLabs/population-figures-by-country#data](https://datahub.io/JohnSnowLabs/population-figures-by-country#data)
+
+Country GDP data from: [https://datahub.io/core/gdp#resource-gdp](https://datahub.io/core/gdp#resource-gdp).
+
+Covid confirmed cases data from [John Hopkins CSSE](https://github.com/CSSEGISandData/COVID-19/blob/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv)
+
+
+```{r importWideData, warning=FALSE}
+countries = read.csv('COUNTRY_AVERAGES_0406_rp.csv', stringsAsFactors = FALSE)
+covid = read.csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv", header=TRUE, stringsAsFactors = FALSE)[, -c(1,3,4)]
+
+covid = covid %>% 
+    group_by(Country.Region) %>%
+    summarise_each(funs(sum)) %>% # sum to get one value for each country
+    mutate(Country.Region=replace(Country.Region, Country.Region=="US", "United States"))
+
+df = merge(countries, covid, by.x = "CountryofLiving", by.y = "Country.Region", all.x = TRUE)
+df$lg_population = log10(df$population_2016)
+df$lg_gdp = log10(df$gdp_2016)
+df$lg_gdp_perperson = log10(df$gdp_2016/df$population_2016)
+df$lg_percentConfirmed_320 = log10(df$X3.20.20/df$population_2016)
+df$lg_percentConfirmed_latest = log10(df$X4.19.20/df$population_2016)
+
+```
+
+# 1. Association between individualism and covid behaviors{.tabset}
+
+```{r}
+plot_asso = function(x, y){
+  g = ggscatter(df, x = x, y = y,
+          add = "reg.line",  
+          conf.int = TRUE, 
+          label = "CountryofLiving",
+          repel = TRUE,
+          add.params = list(color = "blue",
+                            fill = "lightgray"))
+  return(g)
+}
+```
+
+## Social distancing
+
+```{r fig.width= 6, fig.height=5, message=FALSE, warning=FALSE}
+plot_asso("individualism", "m_beh_distance")+
+  stat_cor(method = "pearson", label.x = 55, label.y = 35) 
+```
+
+## Hand washing
+
+```{r fig.width= 6, fig.height=5, message=FALSE, warning=FALSE}
+plot_asso("individualism", "m_beh_handwash")+
+  stat_cor(method = "pearson", label.x = 20, label.y = 65) 
+```
+
+## Social gathering
+
+```{r fig.width= 6, fig.height=5, message=FALSE, warning=FALSE}
+plot_asso("individualism", "m_beh_socgathering")+
+  stat_cor(method = "pearson", label.x = 60, label.y = 76) 
+```
+
+## Stay home
+
+```{r fig.width= 6, fig.height=5, message=FALSE, warning=FALSE}
+plot_asso("individualism", "m_beh_stayhome")+
+  stat_cor(method = "pearson", label.x = 60, label.y = 100) 
+```
+
+## Tell syptom
+
+```{r fig.width= 4, fig.height=4, message=FALSE, warning=FALSE}
+plot_asso("individualism", "m_beh_tellsymp")+
+  stat_cor(method = "pearson", label.x = 60, label.y = 80) 
+```
+
+
+# 2. Association between COVID-severity and covid behaviors{.tabset}
+
+## Social distancing
+
+```{r fig.width= 6, fig.height=5, message=FALSE, warning=FALSE}
+plot_asso("lg_percentConfirmed_320", "m_beh_distance")+
+  stat_cor(method = "pearson", label.x = -4, label.y = 50) +
+  xlab("% confirmed cases in a population") + ylab("Social distancing")
+```
+
+## Hand washing
+
+```{r fig.width= 6, fig.height=5, message=FALSE, warning=FALSE}
+plot_asso("lg_percentConfirmed_320", "m_beh_handwash")+
+  stat_cor(method = "pearson", label.x = -5, label.y = 65) 
+```
+
+## Social gathering
+
+```{r fig.width= 6, fig.height=5, message=FALSE, warning=FALSE}
+plot_asso("lg_percentConfirmed_320", "m_beh_socgathering")+
+  stat_cor(method = "pearson", label.x = -4.5, label.y = 55) 
+```
+
+## Stay home
+
+```{r fig.width= 6, fig.height=5, message=FALSE, warning=FALSE}
+plot_asso("lg_percentConfirmed_320", "m_beh_stayhome")+
+  stat_cor(method = "pearson", label.x = -4.5, label.y = 55) 
+```
+
+## Tell syptom
+
+```{r fig.width= 4, fig.height=4, message=FALSE, warning=FALSE}
+plot_asso("lg_percentConfirmed_320", "m_beh_tellsymp")+
+  stat_cor(method = "pearson", label.x = -5, label.y = 75) 
+```
+
+
+
+# 3. Individualism is a strong predictor for %confirmed cases{.tabset}
+
+Here we use %confirmed cases ($log \frac{confirmed cases}{total population}$)as a measure to characterize the general severity of COVID-19 in a given country. 
+
+## March 20th (Survey start date)
+
+```{r message=FALSE, warning=FALSE}
+plot_asso("individualism", "lg_percentConfirmed_320")+
+  stat_cor(method = "pearson", label.x = 55, label.y = -7) 
+```
+
+
+__We find that after controlling for percent confirmed cases, individualism does not significantly predict social distancing behavior. __
+
+Comparison of models predicting social distancing behavior:
+
+```{r}
+
+md1 = lm(m_beh_distance ~ individualism , data = df)
+md2 = lm(m_beh_distance ~ individualism + lg_percentConfirmed_320, data = df)
+md3 = lm(m_beh_distance ~ individualism + lg_gdp_perperson, data = df)
+
+export_summs(md1, md2, md3,scale = FALSE,model.info = FALSE,model.fit = TRUE, model.names = c("model 1", "model 2", "model 3"), 
+             coefs = c("individualism" = "individualism",
+                      "%confirmed cases (log)" = "lg_percentConfirmed_320",
+                      "GDP per person (log)" = "lg_gdp_perperson"))
+
+```
+
+## Today (`r Sys.Date()`)
+
+```{r message=FALSE, warning=FALSE}
+plot_asso("individualism", "lg_percentConfirmed_latest")+
+  stat_cor(method = "pearson", label.x = 70, label.y = -5) 
+```
+
+
+## As a function of dates 
+
+```{r message=FALSE, warning=FALSE}
+df_long <- gather(df, year, confirmed_cases, X1.22.20:X4.19.20, factor_key=TRUE)
+
+df_long$lg_percentConfirmed = log10(df_long$confirmed_cases/df_long$population_2016)
+
+df_long$lg_percentConfirmed[!is.finite(df_long$lg_percentConfirmed)] <- NA
+df_long2 = na.omit(df_long[,c(12,20,23, 25)])
+
+df_long2$year = str_remove(df_long2$year, "[X]")
+df_long2$date = as.Date(df_long2$year, format = "%m.%d.%Y")
+dates = c()
+beta = c()
+ps = c()
+for (date in unique(df_long2$date)){
+  dates = c(dates, date)
+  df_temp = df_long2[which(df_long2$date == date), ]
+  correlation = cor.test(df_temp$individualism, df_temp$lg_percentConfirmed)
+  md = lm(lg_percentConfirmed ~ individualism + lg_gdp_perperson, data = df_temp)
+  s = summary(md)
+  beta = c(beta, s$coefficients[2,1])
+  ps = c(ps, s$coefficients[2,4])
+}
+
+df_dates = data.frame(dates, beta, ps)
+df_dates$sig = "Not sig"
+df_dates$sig[which(df_dates$ps < .05)] = "Sig"
+keeps = seq(from = 1,to = 89, by = 5)
+g = ggdotchart(df_dates, x = "dates", y = "beta",
+           color = "sig",                                # Color by groups
+           palette = c("#00AFBB", "#E7B800"), # Custom color palette
+           add = "segments",                             # Add segments from y = 0 to dots
+           ggtheme = theme_pubr())
+
+ggpar(g, font.xtickslab = 7)
+```
+
+
+
+
+# 4. GDP (economic activities) is a strong predictor for %confirmed cases{.tabset}
+
+## March 20th (Survey start date)
+
+```{r message=FALSE, warning=FALSE}
+plot_asso("lg_gdp_perperson", "lg_percentConfirmed_320")+
+  stat_cor(method = "pearson", label.x = 4.5, label.y = -6.5) 
+```
+
+## Today (`r Sys.Date()`)
+
+```{r message=FALSE, warning=FALSE}
+
+plot_asso("lg_gdp_perperson", "lg_percentConfirmed_latest")+
+  stat_cor(method = "pearson", label.x = 4.5, label.y = -6) 
+```
+
+# 5. Individualism does not predicts % confirmed cases after controlling for behavior intentions and GDP.
+
+
+```{r}
+md5 = lm(lg_percentConfirmed_latest ~ individualism + m_beh_distance + lg_gdp_perperson, data = df)
+
+summ(md5, confint = TRUE, vifs = TRUE)
+
+```
+
+
